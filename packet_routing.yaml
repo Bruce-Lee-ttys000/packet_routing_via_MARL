@@ -1,0 +1,76 @@
+#=========智能体与环境配置==========
+agent: "MAPPO"  # 使用的算法类型
+env_name: "PacketRouting"  # 环境名称
+env_id: "satellite_network"  # 环境ID
+env_seed: 1  # 环境随机种子
+continuous_action: True  # 使用连续动作空间
+
+#=========算法架构配置==========
+learner: "MAPPO_Clip_Learner"  # 学习器类型
+policy: "Gaussian_MAAC_Policy"  # 策略类型
+representation: "Basic_MLP"  # 特征表示网络类型
+vectorize: "SubprocVecMultiAgentEnv"  # 环境矢量化方法
+runner: "MARL"  # 训练运行器类型
+
+#=========网络结构配置==========
+use_rnn: False  # 是否使用循环神经网络
+rnn: "GRU"  # 循环层类型
+representation_hidden_size: [ 128, 128 ]  # 增加表示网络深度和宽度：两层各128个神经元
+gain: 0.01  # 网络初始化增益参数
+actor_hidden_size: [ 256, 128 ]  # 增加Actor网络深度和宽度：两层各128个神经元
+critic_hidden_size: [ 256, 128 ]  # 增加Critic网络深度和宽度：第一层256个神经元，第二层128个神经元
+activation: "relu"  # 激活函数类型
+
+#=========智能体协作设置==========
+use_parameter_sharing: True  # 是否使用参数共享
+use_actions_mask: False  # 不使用动作掩码
+use_global_state: False  # 不使用全局状态替换合并后的观测值
+
+#=========训练基础参数==========
+seed: 1  # 随机种子
+parallels: 32  # 并行环境数量
+buffer_size: 3200 # 经验回放缓冲区大小
+n_epochs: 10  # 每次更新的epoch数
+n_minibatch: 4  # 每个epoch的小批量数量
+learning_rate: 0.0005  # 学习率
+weight_decay: 0  # 权重衰减系数
+running_steps: 250000  # 训练总步数
+gamma: 0.95  # 折扣因子
+
+#=========PPO特定参数==========
+vf_coef: 0.5  # 值函数损失权重
+ent_coef: 0.01  # 熵正则化系数
+target_kl: 0.25  # 目标KL散度值
+clip_range: 0.2  # 比例裁剪范围
+clip_type: 1  # 梯度裁剪类型
+
+#=========学习率调整==========
+use_linear_lr_decay: True  # 不使用线性学习率衰减
+end_factor_lr_decay: 0.1  # 学习率衰减最终因子
+
+#=========值函数优化设置==========
+use_value_clip: True  # 使用值函数裁剪
+value_clip_range: 0.2  # 值函数裁剪范围
+use_value_norm: True  # 启用值函数归一化
+use_huber_loss: True  # 使用Huber损失
+huber_delta: 10.0  # Huber损失delta参数
+
+#=========优势函数计算==========
+use_advnorm: True  # 对优势值进行归一化
+use_gae: True  # 使用广义优势估计
+gae_lambda: 0.95  # GAE的lambda参数
+
+#=========梯度处理==========
+use_grad_clip: True  # 使用梯度裁剪
+grad_clip_norm: 10.0  # 梯度裁剪最大范数
+
+#=========评估与保存==========
+eval_interval: 500  # 评估间隔步数
+test_episode: 5  # 每次评估的测试回合数
+log_dir: "./logs/mappo/"  # 日志保存路径
+model_dir: "./models/mappo/"  # 模型保存路径
+
+#=========可视化设置==========
+render: False  # 不渲染环境
+render_mode: None  # 渲染模式为空
+save_videos: False  # 不保存视频
