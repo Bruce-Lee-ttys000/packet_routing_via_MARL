@@ -2,7 +2,7 @@
 agent: "MAPPO"  # 使用的算法类型
 env_name: "PacketRouting"  # 环境名称
 env_id: "satellite_network"  # 环境ID
-env_seed: 1  # 环境随机种子
+env_seed: 64  # 环境随机种子
 continuous_action: True  # 使用连续动作空间
 
 #=========算法架构配置==========
@@ -34,7 +34,7 @@ n_epochs: 10  # 每次更新的epoch数
 n_minibatch: 4  # 每个epoch的小批量数量
 learning_rate: 0.0005  # 学习率
 weight_decay: 0  # 权重衰减系数
-running_steps: 250000  # 训练总步数
+running_steps: 1000000  # 训练总步数
 gamma: 0.95  # 折扣因子
 
 #=========PPO特定参数==========
@@ -45,7 +45,7 @@ clip_range: 0.2  # 比例裁剪范围
 clip_type: 1  # 梯度裁剪类型
 
 #=========学习率调整==========
-use_linear_lr_decay: True  # 不使用线性学习率衰减
+use_linear_lr_decay: True  # 使用线性学习率衰减
 end_factor_lr_decay: 0.1  # 学习率衰减最终因子
 
 #=========值函数优化设置==========

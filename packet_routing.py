@@ -58,7 +58,7 @@ class PacketRoutingEnv(RawMultiAgentEnv):
         super().__init__()
 
         # 从 config 中提取参数
-        self.max_episode_steps = getattr(config, 'max_steps', 100)
+        self.max_episode_steps = getattr(config, 'max_steps', 150)
         self.seed = getattr(config, 'seed', 64)
         self.common_reward = getattr(config, 'common_reward', False)
         self.reward_scalarisation = getattr(config, 'reward_scalarisation', "mean")
@@ -71,20 +71,39 @@ class PacketRoutingEnv(RawMultiAgentEnv):
             'step_penalty': -1,
 
             # ✅ 2. 提高奖励，让智能体更积极寻求全局最优
-            'packet_arrival_reward': 50,
+            'packet_arrival_reward': 100,  # 提高单个数据包到达奖励
             'path_completion_reward': 2000,
 
             # ✅ 3. 强化路径优化策略
-            'distance_reward_weight': 30,
-            'distance_penalty_weight': -15,
+            'distance_reward_weight': 50,  # 增加向目标移动的奖励权重
+            'distance_penalty_weight': -25,  # 相应调整惩罚权重
 
             # ✅ 4. 提高错误决策惩罚
-            'loop_penalty': -20,
-            'queue_full_penalty': -10,
-            'drop_penalty': -5,
-            'wrong_destination_penalty': -10,
-            'max_hops_penalty': -10,
+            'loop_penalty': -30,  # 增加循环惩罚
+            'queue_full_penalty': -15,
+            'drop_penalty': -10,
+            'wrong_destination_penalty': -20,
+            'max_hops_penalty': -20,
+
+            # ✅ 5. 到达率里程碑奖励（指数增长）
+            'arrival_20_reward': 200,     # 20%数据包到达
+            'arrival_40_reward': 400,     # 40%数据包到达
+            'arrival_60_reward': 800,     # 60%数据包到达
+            'arrival_80_reward': 1600,    # 80%数据包到达
+            'arrival_100_reward': 3200,   # 100%数据包到达
         }
+
+        # 到达率里程碑设置
+        self.arrival_milestones = {
+            0.20: 'arrival_20_reward',   # 20%
+            0.40: 'arrival_40_reward',   # 40%
+            0.60: 'arrival_60_reward',   # 60%
+            0.80: 'arrival_80_reward',   # 80%
+            1.00: 'arrival_100_reward',  # 100%
+        }
+        
+        # 添加到达率里程碑追踪
+        self.reached_arrival_milestones = set()
 
         # 卫星网络拓扑参数
         self.number_of_orbital_planes = getattr(config, 'number_of_orbital_planes', 4)
@@ -192,6 +211,9 @@ class PacketRoutingEnv(RawMultiAgentEnv):
         self.all_packets = {}  # 用于跟踪所有数据包
         self.current_episode_packets = set()  # 当前回合的数据包ID集合
 
+        # 添加计数器
+        self.dropped_packets_count = 0  # 因超过跳数限制而丢弃的数据包数量
+
         self.reset()
 
     def reset(self, **kwargs):
@@ -244,6 +266,12 @@ class PacketRoutingEnv(RawMultiAgentEnv):
         self.episode_total_reward = 0.0
         self.episode_agent_rewards = {agent: 0.0 for agent in self.agents}
 
+        # 重置计数器
+        self.dropped_packets_count = 0
+
+        # 重置到达率里程碑
+        self.reached_arrival_milestones = set()
+
         # 返回初始观测值和环境信息
         return self.observations, self.infos
 
@@ -273,16 +301,20 @@ class PacketRoutingEnv(RawMultiAgentEnv):
         # **检查队列状态**
         queue_lengths = {node: len(self.queues[node]) for node in self.graph.nodes() if len(self.queues[node]) > 0}
 
-        # **检查是否所有数据包都到达目的节点**
-        arrival_rate = self.received_packets_count / self.packets
-        if arrival_rate >= 0.8:  # 当到达率达到80%时给予比例奖励
-            completion_reward = self.rewards_config['path_completion_reward'] * arrival_rate
-            print(f"\n✅ {arrival_rate * 100:.1f}%的数据包成功到达目的节点！总共用了 {self.current_step} 步")
+        # **检查到达率里程碑**
+        self.check_arrival_milestones()
+
+        # **检查是否所有数据包都已处理完毕（到达目的地或被丢弃）**
+        total_processed_packets = self.received_packets_count + self.dropped_packets_count
+        if total_processed_packets == self.packets:
+            success_rate = (self.received_packets_count / self.packets) * 100
+            print(f"\n✅ 所有数据包处理完毕！")
+            print(f"成功到达: {self.received_packets_count} ({success_rate:.1f}%)")
+            print(f"因跳数限制丢弃: {self.dropped_packets_count} ({100-success_rate:.1f}%)")
+            print(f"总共用了 {self.current_step} 步")
+            
             for agent_id in self.agents:
-                rewards[agent_id] += completion_reward
                 self.terminations[agent_id] = True
-                # 更新智能体的回合奖励
-                self.episode_agent_rewards[agent_id] += completion_reward
 
         # **更新观测**
         for agent_id in self.agents:
@@ -296,22 +328,12 @@ class PacketRoutingEnv(RawMultiAgentEnv):
         # **达到最大步数时终止**
         truncated = self.current_step >= self.max_episode_steps
 
-        # 修改回合结束的条件：所有智能体都终止或达到最大步数
-        episode_done = all(terminations.values()) or truncated  # 改为 all 而不是 any
+        # 修改回合结束的条件：所有智能体都终止或达到最大步数或所有数据包都已处理完毕
+        episode_done = all(terminations.values()) or truncated or total_processed_packets == self.packets
 
         if episode_done:
-            self.global_episode_count += 1  # 在回合结束时增加计数
-
-            # 记录数据到CSV文件
+            self.global_episode_count += 1
             self.log_rewards_to_csv(self.global_episode_count, self.episode_total_reward)
-
-            # 打印信息
-            agent_rewards_array = [self.episode_agent_rewards[agent] for agent in sorted(self.agents)]
-            print(f"Episode {self.global_episode_count}")
-            print(f"Total Reward: {self.episode_total_reward:.2f}")
-            print(f"Agent Rewards: {[f'{r:.2f}' for r in agent_rewards_array]}")
-            print("-------------------")
-
             self.print_episode_summary()
 
         return observations, rewards, terminations, truncated, infos
@@ -502,6 +524,7 @@ class PacketRoutingEnv(RawMultiAgentEnv):
             if packet.hops >= packet.max_hops:
                 packet.is_dropped = True
                 packet.drop_reason = "超过最大跳数限制"
+                self.dropped_packets_count += 1  # 增加丢弃计数
                 for visited_node in packet.visited_nodes:
                     self.rewards[f"agent_{visited_node}"] += self.rewards_config['max_hops_penalty']
                 continue
@@ -577,3 +600,25 @@ class PacketRoutingEnv(RawMultiAgentEnv):
             print(f"{packet_id:8} | {status:6} | {path_str:30} | {info}")
 
         print("=" * 70)
+
+    def check_arrival_milestones(self):
+        """检查并奖励到达率里程碑"""
+        if self.packets == 0:
+            return False
+            
+        current_arrival_rate = self.received_packets_count / self.packets
+        rewards_given = False
+        
+        for milestone, reward_key in sorted(self.arrival_milestones.items()):
+            if milestone not in self.reached_arrival_milestones and current_arrival_rate >= milestone:
+                self.reached_arrival_milestones.add(milestone)
+                milestone_reward = self.rewards_config[reward_key]
+                
+                # 给所有智能体发放里程碑奖励
+                for agent_id in self.agents:
+                    self.rewards[agent_id] += milestone_reward
+                
+                print(f"\n🎯 到达率达到 {milestone*100}% 里程碑！所有智能体获得奖励：{milestone_reward}")
+                rewards_given = True
+        
+        return rewards_given
