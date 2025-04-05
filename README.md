@@ -56,6 +56,7 @@ Copy the following custom files to the appropriate directories:
 - Copy `benchmark_marl.py` to the project root directory.
 - Copy `packet_routing.py` to: ./xuance/environment/multi_agent_env/
 - Copy `satellite_network.py` to: ./xuance/environment/multi_agent_env/
+- Copy `__init__.py` to: ./xuance/environment/multi_agent_env/
 - Copy `packet_routing.yaml` to: ./xuance/configs/mappo/
 ```
 Make sure the file names and paths are exactly as shown.
@@ -93,6 +94,7 @@ xuance/
 │       └── multi_agent_env/
 │           └── packet_routing.py    # Custom environment
 │           └── satellite_network.py # Cooperate with custom environment
+│           └── __init__.py          # For registering the environment
 │
 └── xuance/
     └── configs/
